@@ -45,6 +45,9 @@ def dtype_tag(dtype: torch.dtype) -> str:
 def mqa_logits_formats():
     if get_arch_major() == 10:
         return [(fmt, torch.bfloat16) for fmt in ('mxfp4', 'mxfp8')]
+    # SM120 has MXFP4 and per-token FP8 kernels (no MXFP8); its logits are BF16
+    if get_arch_major() == 12:
+        return [(fmt, torch.bfloat16) for fmt in ('mxfp4', 'fp8')]
     return [('fp8', torch.float)]
 
 
@@ -53,6 +56,9 @@ def mqa_logits_heads(is_mxfp4: bool):
         heads = (8, 12, 16, 20, 32, 64)
         head_dims = (64, 128) if is_mxfp4 else (32, 64, 128)
         return heads, head_dims
+    if get_arch_major() == 12:
+        # SM120 FP4 MQA is head_dim=128 only (`DG_STATIC_ASSERT(kHeadDim == 128)` in the SM120 FP4 kernels)
+        return (16, 32, 64), ((128, ) if is_mxfp4 else (32, 64, 128))
     return (32, 64), (32, 64, 128)
 
 
@@ -299,14 +305,20 @@ def kv_cache_cast_to_mxfp8(x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
 def test_paged_mqa_logits():
     # SM100 flattens varlen requests into `[num_q_tokens, 1]` rows tied together by `indices`; SM90 takes
     # `[batch_size, next_n]` queries. Both give every row its own context length
-    is_varlen = get_arch_major() == 10
+    # SM120 takes both layouts; the varlen one is what DeepInfer uses
+    is_varlen = get_arch_major() in (10, 12)
 
     def enumerate_paged_mqa_logits():
         max_kv_pool_tokens = 32 * 1024 * 1024
         max_q_tokens = 16 * 1024
         for fmt, dtype in mqa_logits_formats():
             heads, head_dims = mqa_logits_heads(fmt == 'mxfp4')
-            for block_kv in ((64, 128, 32) if is_varlen else (64, )):
+            # SM120: FP4 takes block_kv 32 or 64, FP8 only 64
+            if get_arch_major() == 12:
+                block_kvs = (32, 64) if fmt == 'mxfp4' else (64, )
+            else:
+                block_kvs = (64, 128, 32) if is_varlen else (64, )
+            for block_kv in block_kvs:
                 for num_sequences in (64, 256, ):
                     for max_tokens_per_batch in ((6, 8) if is_varlen else (1, 2)):
                         for num_heads in heads:
