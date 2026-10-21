@@ -113,7 +113,11 @@ static void fp8_fp4_gemm_nt(const std::pair<torch::Tensor, torch::Tensor>& a,
 
     std::optional<std::tuple<int, int, int>> eff_recipe = std::nullopt;
     std::optional<std::tuple<int, int>> eff_recipe_a, eff_recipe_b;
-    if (swap_ab) {
+    if (swap_ab and recipe_a.has_value()) {
+        // Each operand keeps its own (MN, K) granularity, e.g. FP8 A at K=128 with B at K=32
+        eff_recipe_a = recipe_b;
+        eff_recipe_b = recipe_a;
+    } else if (swap_ab) {
         eff_recipe_a = std::make_tuple(gb, gk);
         eff_recipe_b = std::make_tuple(ga, gk);
     } else if (recipe_a.has_value()) {

@@ -772,11 +772,8 @@ static void k_grouped_bf16_gemm_tn_contiguous(const torch::Tensor& a,
                                   cute::UMMA::Major::MN, cute::UMMA::Major::MN, compiled_dims, use_psum_layout,
                                   resolve_epilogue_class(epilogue_class, c, d));
     } else if (arch_major == 12) {
-        DG_HOST_ASSERT(epilogue_class == nullptr and "Custom epilogues require SM100");
-        DG_HOST_ASSERT(c.has_value());
-        DG_HOST_ASSERT(not use_psum_layout and ks_cpu.has_value() and not ks_cpu.value().empty());
-        sm120_bf16_k_grouped_gemm(a, b, c, d, m, n, ks_cpu.value(), grouped_layout,
-                                  cute::UMMA::Major::MN, cute::UMMA::Major::MN, compiled_dims);
+        // NOTES: the SM120 kernel (`sm120_bf16_k_grouped_gemm`) gives wrong results on RTX PRO 6000
+        DG_HOST_UNREACHABLE("k-grouped BF16 GEMM is unsupported on SM120");
     } else {
         DG_HOST_UNREACHABLE("Unsupported architecture");
     }

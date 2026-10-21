@@ -144,9 +144,12 @@ def test_bhd_bhr_hdr():
             # actually needs slack here, that is a finding, not a tolerance to pre-loosen.
             assert calc_diff(z, ref_z) < 1e-10
 
-            # On SM120 cuBLASLt picks a CUTLASS `..._s16816gemm_...` kernel rather than an `nvjet` one
-            kernel_name = 'gemm' if get_arch_major() == 12 else 'nvjet'
-            t = bench_kineto(lambda: deep_gemm.einsum('bhd,bhr->hdr', x, y, z, z), kernel_name, suppress_kineto_output=True)
+            # On SM120 cuBLASLt picks `nvjet_sm120_*` or CUTLASS `cutlass_80_*gemm*` kernels depending on the shape
+            if get_arch_major() == 12:
+                t = sum(bench_kineto(lambda: deep_gemm.einsum('bhd,bhr->hdr', x, y, z, z), ('nvjet', 'gemm'),
+                                     suppress_kineto_output=True, with_multiple_kernels=True))
+            else:
+                t = bench_kineto(lambda: deep_gemm.einsum('bhd,bhr->hdr', x, y, z, z), 'nvjet', suppress_kineto_output=True)
             print(f' > Perf ({b=:4.0f}, {h=}, {r=}, {d=}): ',
                   f'{t * 1e6:4.0f} us | '
                   f'{2 * b * h * r * d / t / 1e12:4.0f} TFLOPS | '
