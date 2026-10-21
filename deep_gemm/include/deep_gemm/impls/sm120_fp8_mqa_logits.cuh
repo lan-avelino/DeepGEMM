@@ -59,6 +59,8 @@ void sm120_fp8_mqa_logits(const uint32_t seq_len, const uint32_t seq_len_kv,
     DG_STATIC_ASSERT(kHeadDim % MMA_K == 0 and kNumHeads % MMA_N == 0, "Alignment");
 
     static constexpr uint32_t kSwizzleMode = 128;
+    // The fixed 128B swizzle needs one 128-byte FP8 row per head; smaller head dims read the wrong data
+    DG_STATIC_ASSERT(kHeadDim == 128, "SM120 FP8 MQA only supports head_dim=128");
     static constexpr uint32_t kSwizzleAlignment = kHeadDim * 8;
     static constexpr uint32_t kSMEMKBytes = kHeadDim;
 

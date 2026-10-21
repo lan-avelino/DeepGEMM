@@ -135,6 +135,7 @@ static torch::Tensor fp8_fp4_mqa_logits(const std::tuple<torch::Tensor, std::opt
     } else if (arch_major == 12) {
         DG_HOST_ASSERT(not schedule_meta.has_value());
         DG_HOST_ASSERT(num_heads == 16 or num_heads == 32 or num_heads == 64);
+        DG_HOST_ASSERT(head_dim == 128 and "SM120 MQA logits only support head_dim=128");
         sm120_mqa_logits(q_fp, q_sf, kv_fp, kv_sf, weights.to(torch::kFloat).contiguous(), cu_seq_len_k_start, cu_seq_len_k_end,
                          logits, out_dtype, seq_len, seq_len_kv, max_seqlen_k, stride_logits, num_heads, head_dim,
                          block_q, block_kv, is_mx_sf, qk_dtype);
@@ -303,6 +304,7 @@ static torch::Tensor fp8_fp4_paged_mqa_logits(const std::tuple<torch::Tensor, st
                                   is_varlen, aligned_max_context_len, block_table_stride, num_sms, split_kv);
     } else if (arch_major == 12) {
         DG_HOST_ASSERT(num_heads == 16 or num_heads == 32 or num_heads == 64);
+        DG_HOST_ASSERT(head_dim == 128 and "SM120 MQA logits only support head_dim=128");
         sm120_paged_mqa_logits(q_fp, q_sf, kv_cache, kv_cache_sf, weights.to(torch::kFloat).contiguous(), context_lens, logits,
                                block_table, indices_tensor, schedule_meta, out_dtype, batch_size, batch_size * next_n,
                                next_n, num_heads, head_dim, num_kv_blocks, block_kv, is_context_lens_2d, is_varlen,

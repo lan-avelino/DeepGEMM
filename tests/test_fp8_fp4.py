@@ -107,8 +107,14 @@ def test_gemm() -> None:
                                                                       f'{accumulate=}')
         t = bench_kineto(test_func, 'gemm_', suppress_kineto_output=True)
         cublas_func = make_cublas_gemm(a, b, d, c)
-        cublas_times = bench_kineto(cublas_func, ('nvjet', 'bstensorop', 'reduce'),
-                                    suppress_kineto_output=True, with_multiple_kernels=True)
+        try:
+            cublas_times = bench_kineto(cublas_func, ('nvjet', 'bstensorop', 'reduce'),
+                                        suppress_kineto_output=True, with_multiple_kernels=True)
+        except RuntimeError as e:
+            # SM120 cuBLASLt has no FP8 GEMM for MN-major operands, so those cases have no baseline
+            if get_arch_major() != 12 or 'not supported' not in str(e):
+                raise
+            cublas_times = [0]
         cublas_t = sum(cublas_times)
         if cublas_t > 0:
             scores.append(cublas_t / t)

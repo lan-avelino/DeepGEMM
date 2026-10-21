@@ -54,6 +54,8 @@ void sm120_fp8_paged_mqa_logits(const uint32_t batch_size,
     static constexpr uint32_t kWarpsPerGroup = BLOCK_KV / MMA_M;
     static constexpr uint32_t kNumGroups = kNumMathWarps / kWarpsPerGroup;
     static constexpr uint32_t kSwizzleMode = 128;
+    // The fixed 128B swizzle needs one 128-byte FP8 row per head; smaller head dims read the wrong data
+    DG_STATIC_ASSERT(kHeadDim == 128, "SM120 FP8 MQA only supports head_dim=128");
     static constexpr uint32_t kSMEMKBytes = kHeadDim;
 
     DG_STATIC_ASSERT(kNumTMAThreads == 128, "Expected 128 TMA threads");
