@@ -257,16 +257,18 @@ def test_fp8_bhd_hdr_bhr(use_ue8m0: bool = True):
             deep_gemm.fp8_einsum('bhd,hdr->bhr', x_fp8, y_fp8, z)
             assert calc_diff(z, ref_z) < 1e-3
 
-            def launch_accumulated(out, acc):
-                assert out is acc
-                tmp = torch.zeros((h, b, r), device='cuda', dtype=torch.float).permute(1, 0, 2)
-                deep_gemm.fp8_einsum('bhd,hdr->bhr', x_fp8, y_fp8, tmp, c=tmp)
-                out.copy_(tmp)
-            z_sr = torch.empty_like(z)
-            deep_gemm.fp8_einsum('bhd,hdr->bhr', x_fp8, y_fp8, z_sr,
-                                 epilogue=deep_gemm.epilogue.BF16StochasticRounding())
-            assert_stochastic_bf16_matches_fp32_accumulation(
-                z_sr, launch_accumulated, f'{b=}, {h=}, {r=}, {d=}')
+            # Custom epilogues (stochastic rounding) are SM100-only
+            if get_arch_major() == 10:
+                def launch_accumulated(out, acc):
+                    assert out is acc
+                    tmp = torch.zeros((h, b, r), device='cuda', dtype=torch.float).permute(1, 0, 2)
+                    deep_gemm.fp8_einsum('bhd,hdr->bhr', x_fp8, y_fp8, tmp, c=tmp)
+                    out.copy_(tmp)
+                z_sr = torch.empty_like(z)
+                deep_gemm.fp8_einsum('bhd,hdr->bhr', x_fp8, y_fp8, z_sr,
+                                     epilogue=deep_gemm.epilogue.BF16StochasticRounding())
+                assert_stochastic_bf16_matches_fp32_accumulation(
+                    z_sr, launch_accumulated, f'{b=}, {h=}, {r=}, {d=}')
 
             t = bench_kineto(lambda: deep_gemm.fp8_einsum('bhd,hdr->bhr', x_fp8, y_fp8, z), 'gemm_', suppress_kineto_output=True)
             t_cublaslt = bench_kineto(lambda: deep_gemm.einsum('bhd,hdr->bhr', x, y, z), 'nvjet', suppress_kineto_output=True)

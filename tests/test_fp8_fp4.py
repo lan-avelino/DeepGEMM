@@ -252,6 +252,9 @@ def test_m_grouped_gemm_masked() -> None:
 
 
 def test_k_grouped_gemm_contiguous() -> None:
+    if get_arch_major() == 12:
+        print('Skipping k-grouped GEMM: unsupported on SM120\n')
+        return
     print('Testing k-grouped GEMM:')
 
     arch_major = get_arch_major()

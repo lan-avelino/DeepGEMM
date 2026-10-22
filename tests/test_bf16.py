@@ -19,6 +19,17 @@ from generators import (
     generate_normal, generate_m_grouped_contiguous, generate_m_grouped_masked, generate_k_grouped_contiguous,
 )
 
+# cuBLASLt kernels to time. On SM120, small-M FP32 outputs run `dot_kernel` + `reduce_1Block_kernel`
+# and split-K adds `splitKreduce_kernel`, so every matched kernel is timed there
+CUBLASLT_KERNEL_NAMES = ('nvjet', 'gemv', 'gemm')
+CUBLASLT_SM120_KERNEL_NAMES = CUBLASLT_KERNEL_NAMES + ('dot_kernel', 'reduce_1Block_kernel', 'splitKreduce')
+
+
+def bench_cublaslt(fn) -> float:
+    if get_arch_major() == 12:
+        return sum(bench_kineto(fn, CUBLASLT_SM120_KERNEL_NAMES, suppress_kineto_output=True, with_multiple_kernels=True))
+    return sum(bench_kineto(fn, CUBLASLT_KERNEL_NAMES, suppress_kineto_output=True))
+
 
 def test_gemm() -> None:
     print('Testing GEMM:')
@@ -238,8 +249,7 @@ def test_cublaslt_gemm() -> None:
             assert diff < threshold, (f'{diff=}, {use_alpha=}, {alpha=}, '
                                       f'({m=}, {n=}, {k=}, {major_opt=}, {accumulate=}, {out_dtype=})')
 
-        t_nvjet, t_gemv, t_gemm = bench_kineto(lambda: deep_gemm.cublaslt_gemm_nt(a, b, d, c=c), ('nvjet', 'gemv', 'gemm'), suppress_kineto_output=True)
-        t = t_nvjet + t_gemv + t_gemm
+        t = bench_cublaslt(lambda: deep_gemm.cublaslt_gemm_nt(a, b, d, c=c))
         print(f' > Perf (m={m:6}, n={n:6}, k={k:6}, layout={major_opt}, {out_opt}, {acc_opt}): '
               f'{t * 1e6:5.0f} us | '
               f'{2 * m * n * k / t / 1e12:4.0f} TFLOPS | '
@@ -271,10 +281,7 @@ def test_cublaslt_batched_syrk() -> None:
                     f'{diff=}, ({batch_shape=}, {padding=}, {rows=}, {cols=}, {major_opt=}, {out_dtype=})'
                 )
 
-            t_nvjet, t_gemv, t_gemm = bench_kineto(
-                lambda: deep_gemm.batched_syrk(a, d),
-                ('nvjet', 'gemv', 'gemm'), suppress_kineto_output=True)
-            t = t_nvjet + t_gemv + t_gemm
+            t = bench_cublaslt(lambda: deep_gemm.batched_syrk(a, d))
             print(f' > Perf (batch={num_batches}, m={rows:6}, n={rows:6}, k={cols:6}, '
                   f'layout={major_opt}, {out_opt}): '
                   f'{t * 1e6:5.0f} us | '
@@ -314,10 +321,7 @@ def test_cublaslt_batched_symm() -> None:
                     f'{diff=}, ({batch_shape=}, {padding=}, {rows=}, {cols=}, {major_opt=}, {out_dtype=})'
                 )
 
-            t_nvjet, t_gemv, t_gemm = bench_kineto(
-                lambda: deep_gemm.batched_symm(a, b, d),
-                ('nvjet', 'gemv', 'gemm'), suppress_kineto_output=True)
-            t = t_nvjet + t_gemv + t_gemm
+            t = bench_cublaslt(lambda: deep_gemm.batched_symm(a, b, d))
             print(f' > Perf (batch={num_batches}, m={rows:6}, n={cols:6}, k={rows:6}, '
                   f'layout={major_opt}, {out_opt}): '
                   f'{t * 1e6:5.0f} us | '

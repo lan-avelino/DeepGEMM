@@ -390,17 +390,8 @@ static void k_grouped_fp8_gemm_tn_contiguous(const std::pair<torch::Tensor, torc
                                       cute::UMMA::Major::MN, cute::UMMA::Major::MN, compiled_dims, use_psum_layout,
                                       resolve_epilogue_class(epilogue_class, c, d));
     } else if (arch_major == 12) {
-        DG_HOST_ASSERT(epilogue_class == nullptr and "Custom epilogues require SM100");
-        DG_HOST_ASSERT(not use_psum_layout and ks_cpu.has_value() and not ks_cpu.value().empty());
-        // SM120: single transpose [sum_k, M/N] -> [M/N, sum_k] with constant stride=sum_k.
-        // Kernel uses kKGroupedConstantStride: per-group only replaces addr+dim, not stride.
-        const auto sfa = layout::transform_k_grouped_sf_into_required_layout(a.second, ks_cpu, grouped_layout, recipe, k_alignment, use_psum_layout);
-        const auto sfb = layout::transform_k_grouped_sf_into_required_layout(b.second, ks_cpu, grouped_layout, recipe, k_alignment, use_psum_layout);
-        const auto tensor_map_buffer = torch::empty({runtime->get_num_sms() * 4 * static_cast<int>(sizeof(CUtensorMap))},
-                                                    a.first.options().dtype(torch::kByte));
-        sm120_k_grouped_fp8_fp4_gemm_1d1d(a.first.t().contiguous(), sfa, b.first.t().contiguous(), sfb, c, d, m, n,
-                                          ks_cpu.value(), grouped_layout, tensor_map_buffer, gran_k, gran_k,
-                                          cute::UMMA::Major::K, cute::UMMA::Major::K, compiled_dims, true, sum_k);
+        // NOTES: the SM120 kernel (`sm120_k_grouped_fp8_fp4_gemm_1d1d`) is nondeterministic on RTX PRO 6000
+        DG_HOST_UNREACHABLE("k-grouped FP8 GEMM is unsupported on SM120");
     } else {
         DG_HOST_UNREACHABLE("Unsupported architecture");
     }
@@ -458,10 +449,8 @@ static void k_grouped_fp8_gemm_nt_contiguous(const std::pair<torch::Tensor, torc
         sm90_k_grouped_fp8_gemm_1d1d(a.first, sfa, b.first, sfb, c, d, m, n, ks_cpu.value(), grouped_layout, tensor_map_buffer,
                                      cute::UMMA::Major::K, cute::UMMA::Major::K, compiled_dims);
     } else if (arch_major == 12) {
-        sm120_k_grouped_fp8_fp4_gemm_1d1d(a.first, sfa, b.first, sfb, c, d, m, n,
-                                          ks_cpu.value(), grouped_layout, tensor_map_buffer,
-                                          std::get<2>(recipe), std::get<2>(recipe),
-                                          cute::UMMA::Major::K, cute::UMMA::Major::K, compiled_dims);
+        // NOTES: the SM120 kernel (`sm120_k_grouped_fp8_fp4_gemm_1d1d`) is nondeterministic on RTX PRO 6000
+        DG_HOST_UNREACHABLE("k-grouped FP8 GEMM is unsupported on SM120");
     } else {
         DG_HOST_UNREACHABLE("Unsupported architecture");
     }
