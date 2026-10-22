@@ -80,7 +80,8 @@ struct SM120ArchSpec {
             // BN=16 always valid: K-major B has N as TMA outer dim, no minimum.
             // Kernel epilogue bounds-checks shape_n for partial N tiles.
             block_n_candidates.push_back(16);
-            if (n_for_tile > 16)
+            // BF16 with BLOCK_M=64 cannot use BLOCK_N=16 (see the loop below), so keep a partial 32-wide tile for it
+            if (n_for_tile > 16 or desc.get_mma_kind() == MmaKind::BF16)
                 block_n_candidates.push_back(32);
         } else {
             int step = std::lcm(8, heuristics_runtime->get_block_n_multiple_of());
@@ -103,6 +104,13 @@ struct SM120ArchSpec {
         for (int block_n : block_n_candidates) {
             if (!is_small_n and (block_n > 128 or block_n > mn_major_b_max_n))
                 continue;
+            // `sm120_bf16_gemm` loads K-major B with ldmatrix.x2, which needs an even number of 8-wide N tiles
+            // per N-warp; BLOCK_M=64 uses 2 N-warps (`impls/sm120_bf16_gemm.hpp`), so BLOCK_N=16 cannot build there
+            if (desc.get_mma_kind() == MmaKind::BF16 and desc.major_b == cute::UMMA::Major::K) {
+                const int num_n_warps = (block_m % 64 == 0 and block_m < 128) ? 2 : 1;
+                if ((block_n / 8 / num_n_warps) % 2 != 0)
+                    continue;
+            }
 
             const auto layout = Layout{0, block_m, block_n, block_k, 1, 1};
             const auto storage_config = get_storage_config(desc, layout);
