@@ -70,7 +70,8 @@ struct SM120ArchSpec {
         // but only beneficial for large M (>= 2048) and non-mixed dtypes.
         const bool is_mixed = (desc.a_dtype != desc.b_dtype);
         std::vector<int> block_k_candidates;
-        if (!is_mixed and expected_m >= 2048)
+        // Deterministic mode is also batch invariant: no M-dependent BLOCK_K (see `get_split_k_factor`)
+        if (!is_mixed and expected_m >= 2048 and not heuristics_runtime->get_deterministic_algorithms())
             block_k_candidates.push_back(64 / elem_size);
         block_k_candidates.push_back(128 / elem_size);
 
@@ -331,6 +332,11 @@ struct SM120ArchSpec {
 
     static int get_split_k_factor(const GemmDesc& desc, const Layout& layout) {
         if (desc.gemm_type != GemmType::Normal or desc.kernel_type == KernelType::KernelNoSF)
+            return 1;
+        // NOTES: deterministic mode is also batch invariant (as `mega_gate.hpp` states for SM100), so K is never
+        // split: a split chosen from M changes the summation order with the number of rows, and a row's result
+        // then depends on the rest of the batch (DeepInfer under DEEPINFER_BATCH_INVARIANT)
+        if (heuristics_runtime->get_deterministic_algorithms())
             return 1;
 
         const int num_m_blocks = ceil_div(desc.get_expected_m(), layout.block_m);
